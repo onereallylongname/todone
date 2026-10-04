@@ -1,0 +1,11 @@
+{
+  "fg": "#f8f8f2",
+  "dim": "#bdc1c6",
+  "muted": "#8b8b8b",
+  "primary": "#8be9fd",
+  "success": "#50fa7b",
+  "warning": "#f1fa8c",
+  "error": "#ff5555",
+  "accent": "#bd93f9",
+  "contrast_fg": "#282a36"
+}
