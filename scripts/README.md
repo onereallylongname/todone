@@ -58,6 +58,7 @@ or via your env.nu file (be careful not leak it)
 The import workflow allows to:
 
 > todo import ... work_item_id
+
 > todone follow task_id
 
 This will fetch the summary for the work item and return the todone task id, adding the work item url as the primary todone link.
