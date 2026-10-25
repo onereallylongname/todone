@@ -259,5 +259,5 @@ Built in Go with [Bubble Tea v2](https://charm.land/bubbletea) +
 [Lipgloss v2](https://charm.land/lipgloss), sharing conventions with its
 sibling project [`avredit`](../avredit). See [`docs/PLAN.md`](docs/PLAN.md)
 for the full design rationale, prior-art comparison, and a catalog of the
-UX flaws found in the original `todo.nu` Nushell script that motivated this
+UX flaws found in the original [`todo.nu`](./scripts/nushell/todo.nu) Nushell script that motivated this
 rewrite.
