@@ -11,25 +11,6 @@ def todo-file [
 ] {
   ($file | default $env.TODO_MAIN_FILE)
 }
- 
-def ado-pat [
-    pat?: string
-] {
-
-    let found_pat = (
-        $pat
-        | default $env.TODO_ADO_PAT?
-    )
-
-    if ($found_pat | is-empty) {
-        error make {
-            msg: "No Azure DevOps PAT configured."
-            help: "Run 'todo set pat' or pass '--pat'."
-        }
-    }
-
-    $found_pat
-}
 
 def load-todos [--file: string] {
 
@@ -66,53 +47,16 @@ def tags-list [] {
   open $"($env.TODO_MAIN_FILE)" -r | from yaml | get tags | flatten | uniq;
 }
 
-#######################
-## Import helper
-#######################
-
-# Build the azure devops api url
-def ado-api-url [
-    org: string
-    project: string
-    id: string
-] {
-    $"https://dev.azure.com/($org)/($project)/_apis/wit/workitems/($id)?api-version=7.1"
+# Helper to harmoize stdin and args
+def collect-import-ids [
+    in_args?: list<string>
+    in_std?: list<any>
+] : nothing -> list<string> {
+    (($in_args | default []) | union ($in_std | default [] | into string))
 }
 
-# Build the azure devops api url
-def ado-workitem-url [
-    org: string
-    project: string
-    id: string
-] {
-    $"https://dev.azure.com/($org)/($project)/_workitems/edit/($id)"
-}
-
-def ado-get-workitem [
-    org: string
-    project: string
-    id: string
-    pat?: string
-] {
-    let valid_pat = ado-pat $pat
-    http get --password $valid_pat (ado-api-url $org $project $id)
-}
-
-def find-by-link [
-    link: string
-    --file (-f): string
-] {
-
-    let todos = (load-todos --file $file)
-
-    $todos
-    | where {|r|
-        ($r.links | default [])
-        | any {|l| $l == $link}
-    }
-}
-
-def upsert-ado-task [
+# Generic upsert for all tasks
+def upsert-task [
     task: record
     --file (-f): string
 ] {
@@ -158,43 +102,243 @@ def upsert-ado-task [
 }
 
 #######################
-## Public fucntions
+## Import helpers
 #######################
 
-# Set the pat on the env var TODO_ADO_PAT
-export def --env "set pat" [] {
-    $env.TODO_ADO_PAT = (input --suppress-output "Azure DevOps PAT")
-    print "PAT stored in current Nushell session."
-}
-
-# Set a the base file on the env var TODO_MAIN_FILE
-export def --env "set file" [
-    file: string
+##################
+### Import ado
+##################
+ 
+def ado-pat [
+    pat?: string
 ] {
 
-    let expanded = ($file | path expand)
-    let parent = ($expanded | path dirname)
+    let found_pat = (
+        $pat
+        | default $env.TODO_ADO_PAT?
+    )
 
-    if not ($parent | path exists) {
+    if ($found_pat | is-empty) {
         error make {
-            msg: $"Directory does not exist: ($parent)"
+            msg: "No Azure DevOps PAT configured."
+            help: "Run 'todo set pat ado' or pass '--pat'."
         }
     }
 
-    $env.TODO_MAIN_FILE = $expanded
+    $found_pat
+}
+
+# Build the azure devops api url
+def ado-api-url [
+    org: string
+    project: string
+    id: string
+] {
+    $"https://dev.azure.com/($org)/($project)/_apis/wit/workitems/($id)?api-version=7.1"
+}
+
+# Build the azure devops api url
+def ado-workitem-url [
+    org: string
+    project: string
+    id: string
+] {
+    $"https://dev.azure.com/($org)/($project)/_workitems/edit/($id)"
+}
+
+def ado-get-workitem [
+    org: string
+    project: string
+    id: string
+    pat?: string
+] {
+    let valid_pat = ado-pat $pat
+    http get --password $valid_pat (ado-api-url $org $project $id)
+}
+
+def find-by-link [
+    link: string
+    --file (-f): string
+] {
+
+    let todos = (load-todos --file $file)
+
+    $todos
+    | where {|r|
+        ($r.links | default [])
+        | any {|l| $l == $link}
+    }
+}
+
+##################
+### Import github
+##################
+
+def github-pat [
+  pat?: string
+] {
+
+  let found_pat = (
+    $pat
+    | default $env.TODO_GITHUB_PAT?
+  )
+
+  if ($found_pat | is-empty) {
+    error make {
+      msg: "No Github PAT configured."
+            help: "Run 'todo set pat github' or pass '--pat'."
+        }
+    }
+
+  $found_pat
+}
+
+def github-api-url [
+  repo: string
+  id: string
+] {
+  $"https://api.github.com/repos/($repo)/issues/($id)"
+}
+
+def github-issue-url [
+    repo: string
+    id: string
+] {
+    $"https://github.com/($repo)/issues/($id)"
+}
+
+def github-get-issue [
+  repo: string
+  id: string
+  pat?: string
+] {
+
+  let headers = {
+    Authorization: $"Bearer (github-pat $pat)"
+        Accept: "application/vnd.github+json"
+        X-GitHub-Api-Version: "2022-11-28"
+    }
+
+  http get --headers $headers (github-api-url $repo $id)
 }
 
 
-export def --env "import ado" [
+#######################
+## Public fucntions
+#######################
 
-    --org (-o): string
-    --project (-p): string
-    --file (-f): string
-    --pat: string
-    ...ids: string
+# Set a the base file on the env var TODO_MAIN_FILE
+export def --env "set file" [
+  file: string # path to the new file
+] {
+  let file = ($in | default $file)
+  let expanded = ($file | path expand)
+  let parent = ($expanded | path dirname)
+
+  if not ($parent | path exists) {
+    error make {
+      msg: $"Directory does not exist: ($parent)"
+        }
+    }
+
+  $env.TODO_MAIN_FILE = $expanded
+}
+
+# Set the pat on the env var TODO_ADO_PAT
+export def --env "set pat github" [] {
+  let stdin_val = $in
+  $env.TODO_GITHUB_PAT = if ($stdin_val != null) {
+    $stdin_val
+  } else {
+    (input --suppress-output "Github PAT")
+  }
+  print "PAT stored in current Nushell session."
+}
+
+
+# Upsert github issues from Github into the todo list
+export def --env "import github" [
+  --repo (-r): string
+  --file (-f): string
+  --pat: string
+  ...ids: string
 ] {
 
-    let file = $file
+  let ids = (collect-import-ids $ids $in)
+
+  $ids
+  | each {|id|
+
+      try {
+
+          let issue = (github-get-issue $repo $id $pat)
+
+          let task = {
+
+              summary: ($"($id) : ($issue.title)")
+
+              tags: (
+                  [
+                      github
+                      ($"repo:($repo)" | str replace '/' '_')
+                  ]
+                  ++ (
+                      $issue.labels
+                      | each {|l|
+                          $l.name
+                          | str replace ' ' '_'
+                      }
+                  )
+              )
+
+              links: [
+                  $issue.html_url
+              ]
+          }
+
+          let out = (upsert-task $task --file $file)
+
+          {
+              id: $out.1
+              work_item: $id
+              title: $task.summary
+              action: $out.0
+          }
+
+      } catch {|e|
+
+          {
+              id: ""
+              work_item: $id
+              title: ($e.msg? | default ($e | to text))
+              action: "error"
+          }
+
+      }
+  }
+}
+
+# Set the pat on the env var TODO_ADO_PAT
+export def --env "set pat ado" [] {
+    let stdin_val = $in
+    $env.TODO_ADO_PAT = if ($stdin_val != null) {
+      $stdin_val
+    } else {
+     (input --suppress-output "Azure DevOps PAT")
+    }
+    print "PAT stored in current Nushell session."
+}
+
+# Upsert work items from Azure DevOps into the todo list
+export def --env "import ado" [
+    --org (-o): string     # The devops Organization
+    --project (-p): string # The devops Project
+    --file (-f): string    # Override the default todo.yml
+    --pat: string          # Override the default devops PAT
+    ...ids: string         # The list of ids to upsert
+] {
+    let ids = (collect-import-ids $ids $in)
+
     $ids
     | each {|id|
         try {
@@ -214,7 +358,7 @@ export def --env "import ado" [
                 ]
             }
 
-            let out = (upsert-ado-task $task --file $file)
+            let out = (upsert-task $task --file $file)
 
             {
                 id: $out.1
